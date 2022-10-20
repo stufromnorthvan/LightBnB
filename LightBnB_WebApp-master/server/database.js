@@ -91,7 +91,7 @@ exports.addUser = addUser;
 
 const getAllReservations = function(guest_id, limit = 10) {
   return pool
-  .query(`SELECT reservations.*, properties.*
+    .query(`SELECT reservations.*, properties.*
   FROM reservations
   JOIN properties ON reservations.property_id = properties.id
   JOIN property_reviews ON properties.id = property_reviews.property_id
@@ -99,14 +99,14 @@ const getAllReservations = function(guest_id, limit = 10) {
   GROUP BY properties.id, reservations.id
   ORDER BY reservations.start_date
   LIMIT $2`, [guest_id, limit])
-  .then((result) => {
-    console.log(result.rows)
-    return result.rows;
-  })
-  .catch((err) => {
-    console.log(err.message);
-  });
-}
+    .then((result) => {
+      console.log(result.rows);
+      return result.rows;
+    })
+    .catch((err) => {
+      console.log(err.message);
+    });
+};
 
 exports.getAllReservations = getAllReservations;
 
@@ -118,15 +118,65 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
-const getAllProperties = (options, limit = 10) => {
-  return pool
-    .query(`SELECT * FROM properties LIMIT $1`, [limit])
-    .then((result) => {
-      return result.rows;
-    })
-    .catch((err) => {
-      console.log(err.message);
-    });
+const getAllProperties = function(options, limit = 10) {
+  // Setup an array to hold any parameters that may be available for the query
+  const queryParams = [];
+  // Start the query with all information that comes before the WHERE clause.
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
+  // Check if a city has been passed in as an option. Add the city to the params array and create a WHERE clause for the city.
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+  }
+  //  Check if an owner has been passed in as an option. Add the owner to the params array and create a WHERE clause for the owner.
+  if (options.owner_id) {
+    queryParams.push(`%${options.owner_id}%`);
+    // if (queryParams.length) {
+    //   queryString += `AND owner_id LIKE $${queryParams.length} `;
+    // } else {
+    // queryString += `WHERE owner_id LIKE $${queryParams.length} `;
+    // } 
+    queryString += `${queryParams.length > 1 ? 'AND' : 'WHERE' } owner_id LIKE $${queryParams.length} `;
+  }
+  //  Check if a minimum price per night has been passed in as an option. Add the minimum price to the params array and create a WHERE clause for the minimum price.
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night}`);
+    if (queryParams.length) {
+      queryString += `AND cost_per_night >= $${queryParams.length} `;
+    } else {
+      queryString += `WHERE cost_per_night >= $${queryParams.length} `;
+    }
+  }
+  //  Check if a max price per night has been passed in as an option. Add the max price to the params array and create a WHERE clause for the max price.
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night}`);
+    if (queryParams.length) {
+      queryString += `AND cost_per_night <= $${queryParams.length} `;
+    } else {
+      queryString += `WHERE cost_per_night <= $${queryParams.length} `;
+    }
+  }
+
+  // Add any query that comes after the WHERE clause.
+
+  queryString += `
+  GROUP BY properties.id `
+    //  Check if a minimum ratinghas been passed in as an option. Add the min rating to the params array and create a WHERE clause for the min rating.
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+      queryString += `HAVING avg(property_reviews.rating) >= $${queryParams.length} `;
+  }
+  queryParams.push(limit);
+  queryString += `ORDER BY cost_per_night
+  LIMIT $${queryParams.length}`;
+  // Console log everything just to make sure we've done it right.
+  console.log(queryString, queryParams);
+  // Run the query.
+  return pool.query(queryString, queryParams).then((res) => res.rows);
 };
 
 exports.getAllProperties = getAllProperties;
